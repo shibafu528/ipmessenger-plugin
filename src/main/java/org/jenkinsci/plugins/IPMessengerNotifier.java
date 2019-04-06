@@ -2,36 +2,29 @@ package org.jenkinsci.plugins;
 
 import hudson.Extension;
 import hudson.Launcher;
-import hudson.model.BuildListener;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
+import hudson.model.BuildListener;
+import hudson.model.Result;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
-
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-
 import net.sf.json.JSONObject;
-
 import org.jenkinsci.plugins.tokenmacro.MacroEvaluationException;
 import org.jenkinsci.plugins.tokenmacro.TokenMacro;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
 
+import java.io.IOException;
+import java.io.PrintStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+
 public class IPMessengerNotifier extends Notifier {
 
     private String fromHost = "";
-    private final String charset = "MS932";
-    private final int port = 2425;
     private final int sleep = 2500;
     private final String messageTemplate;
     private final String recipientHosts;
@@ -59,7 +52,8 @@ public class IPMessengerNotifier extends Notifier {
             BuildListener listener) {
 
         PrintStream logger = listener.getLogger();
-        String message = "BUILD " + build.getResult().toString() + "\n";
+        Result result = build.getResult();
+        String message = "BUILD " + (result == null ? "STATUS UNKNOWN" : result.toString()) + "\n";
 
         try {
             fromHost = InetAddress.getLocalHost().getHostName();
@@ -68,12 +62,15 @@ public class IPMessengerNotifier extends Notifier {
                     + ": Can't get hostname of jenkins."
                     + e.getMessage());
         }
+
+        IPMessengerSendService ipmsgService = new IPMessengerSendService(getDescriptor().getJenkinsUserName(), fromHost);
+
         try {
             message += TokenMacro.expandAll(build, listener, messageTemplate);
-            sendNooperation(logger);
+            ipmsgService.sendNooperation(logger);
             Thread.sleep(sleep);
             for (String toHost : createRecipientHostList(recipientHosts)) {
-                sendMsg(message, toHost, logger);
+                ipmsgService.sendMsg(message, toHost, logger);
             }
         } catch (MacroEvaluationException e) {
             logger.println(this.getClass().getSimpleName()
@@ -135,69 +132,5 @@ public class IPMessengerNotifier extends Notifier {
             result.add(s.replaceAll("\\s+", ""));
         }
         return result;
-    }
-
-    private void sendMsg(String message, String toHost, PrintStream logger) {
-        message = createTeregram(0x00000020, message);
-        sendPacket(message, toHost, logger);
-    }
-
-    private void sendNooperation(PrintStream logger) {
-        String message = createTeregram(0x00000000, null);
-        sendPacket(message, "255.255.255.255", logger);
-    }
-
-    private String createTeregram(int command, String message) {
-        String userName = getDescriptor().getJenkinsUserName();
-        if (userName == null || "".equals(userName)) {
-            userName = "jenkins-ci";
-        }
-        StringBuffer sb = new StringBuffer();
-        sb.append(1);// ipmessenger protocol version
-        sb.append(":");
-        // packet serial number
-        sb.append((int) Math.floor(Math.random() * Integer.MAX_VALUE));
-        sb.append(":");
-        sb.append(userName);// sender username
-        sb.append(":");
-        sb.append(fromHost);// sender hostname
-        sb.append(":");
-        sb.append(command);// command number
-        sb.append(":");
-        sb.append(message);
-        return sb.toString();
-    }
-
-    private void sendPacket(String message, String toHost, PrintStream logger) {
-        byte[] byteMsg = null;
-        DatagramPacket packet = null;
-        DatagramSocket socket = null;
-        try {
-            byteMsg = message.getBytes(charset);
-            socket = new DatagramSocket(port);
-            packet = new DatagramPacket(byteMsg, byteMsg.length,
-                    InetAddress.getByName(toHost), port);
-            socket.send(packet);
-        } catch (UnsupportedEncodingException e) {
-            logger.println(this.getClass().getSimpleName()
-                    + ": UnsupportedEncodingException happened. You should change message template."
-                    + e.getMessage());
-        } catch (SocketException e) {
-            logger.println(this.getClass().getSimpleName()
-                    + ": SocketException happened"
-                    + e.getMessage());
-        } catch (UnknownHostException e) {
-            logger.println(this.getClass().getSimpleName()
-                    + ": UnknownHostException: " + toHost
-                    + e.getMessage());
-        } catch (IOException e) {
-            logger.println(this.getClass().getSimpleName()
-                    + ": IOException happened"
-                    + e.getMessage());
-        } finally {
-            if (socket != null) {
-                socket.close();
-            }
-        }
     }
 }
