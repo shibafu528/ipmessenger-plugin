@@ -83,7 +83,9 @@ public class IPMessengerSendStep extends Step {
     }
 
     private static class IPMessengerSendStepExecution extends SynchronousNonBlockingStepExecution<Void> {
-        private final int SLEEP = 2500;
+        private static final long serialVersionUID = 1L;
+        private static final int SLEEP = 2500;
+
         private transient final IPMessengerSendStep step;
 
         protected IPMessengerSendStepExecution(@Nonnull StepContext context, IPMessengerSendStep step) {

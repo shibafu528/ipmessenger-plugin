@@ -23,9 +23,9 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 
 public class IPMessengerNotifier extends Notifier {
+    private static final int SLEEP = 2500;
 
     private String fromHost = "";
-    private final int sleep = 2500;
     private final String messageTemplate;
     private final String recipientHosts;
 
@@ -68,7 +68,7 @@ public class IPMessengerNotifier extends Notifier {
         try {
             message += TokenMacro.expandAll(build, listener, messageTemplate);
             ipmsgService.sendNooperation(logger);
-            Thread.sleep(sleep);
+            Thread.sleep(SLEEP);
             for (String toHost : createRecipientHostList(recipientHosts)) {
                 ipmsgService.sendMsg(message, toHost, logger);
             }
